@@ -11,6 +11,12 @@ export interface PubSubRedisOptions {
   reviver?: Reviver;
 }
 
+type Subscription = {
+  triggerName: string,
+  onMessage: Function,
+  binary: boolean,
+};
+
 export class RedisPubSub implements PubSubEngine {
   constructor(options: PubSubRedisOptions = {}) {
     const {
@@ -51,25 +57,25 @@ export class RedisPubSub implements PubSubEngine {
     }
 
     // TODO support for pattern based message
-    this.redisSubscriber.on('message', this.onMessage.bind(this));
+    this.redisSubscriber.on('messageBuffer', this.onMessage.bind(this));
 
     this.subscriptionMap = {};
     this.subsRefsMap = {};
     this.currentSubscriptionId = 0;
   }
 
-  public async publish(trigger: string, payload: any): Promise<void> {
-    await this.redisPublisher.publish(trigger, JSON.stringify(payload));
+  public async publish(trigger: string, payload: any, options: {binary?: boolean} = {}): Promise<void> {
+    await this.redisPublisher.publish(trigger, options.binary ? payload : JSON.stringify(payload));
   }
 
   public subscribe(
     trigger: string,
     onMessage: Function,
-    options?: Object,
+    options: {binary?: boolean, repoName?: string} = {},
   ): Promise<number> {
     const triggerName: string = this.triggerTransform(trigger, options);
     const id = this.currentSubscriptionId++;
-    this.subscriptionMap[id] = [triggerName, onMessage];
+    this.subscriptionMap[id] = {triggerName, onMessage, binary: !!options.binary};
 
     const refs = this.subsRefsMap[triggerName];
     if (refs && refs.length > 0) {
@@ -95,7 +101,7 @@ export class RedisPubSub implements PubSubEngine {
   }
 
   public unsubscribe(subId: number) {
-    const [triggerName = null] = this.subscriptionMap[subId] || [];
+    const {triggerName = null} = this.subscriptionMap[subId] || {};
     const refs = this.subsRefsMap[triggerName];
 
     if (!refs) throw new Error(`There is no subscription of id "${subId}"`);
@@ -131,22 +137,22 @@ export class RedisPubSub implements PubSubEngine {
     this.redisSubscriber.quit();
   }
 
-  private onMessage(channel: string, message: string) {
-    const subscribers = this.subsRefsMap[channel];
+  private onMessage(channel: string, message: Buffer) {
+    let parsedMessage: any = message;
+    let messageParseAttempted = false;
 
-    // Don't work for nothing..
-    if (!subscribers || !subscribers.length) return;
-
-    let parsedMessage;
-    try {
-      parsedMessage = JSON.parse(message, this.reviver);
-    } catch (e) {
-      parsedMessage = message;
-    }
-
-    for (const subId of subscribers) {
-      const [, listener] = this.subscriptionMap[subId];
-      listener(parsedMessage);
+    for (const subId of this.subsRefsMap[channel] || []) {
+      const {onMessage, binary} = this.subscriptionMap[subId];
+      if (!binary && !messageParseAttempted) {
+        messageParseAttempted = true;
+        try {
+          parsedMessage = parsedMessage.toString();
+          parsedMessage = JSON.parse(parsedMessage, this.reviver);
+        } catch (e) {
+          // swallow parse error and return raw string
+        }
+      }
+      onMessage(binary ? message : parsedMessage);
     }
   }
 
@@ -155,7 +161,7 @@ export class RedisPubSub implements PubSubEngine {
   private redisPublisher: RedisClient;
   private reviver: Reviver;
 
-  private subscriptionMap: { [subId: number]: [string, Function] };
+  private subscriptionMap: { [subId: number]: Subscription };
   private subsRefsMap: { [trigger: string]: Array<number> };
   private currentSubscriptionId: number;
 }

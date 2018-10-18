@@ -21,7 +21,7 @@ const mockRedisClient = {
   subscribe: subscribeSpy,
   unsubscribe: unsubscribeSpy,
   on: (event, cb) => {
-    if (event === 'message') {
+    if (event === 'messageBuffer') {
       listener = cb;
     }
   },
