@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/davidyaha/graphql-redis-subscriptions.git"
+    "url": "https://github.com/jcoreio/graphql-redis-subscriptions.git"
   },
   "keywords": [
     "graphql",
@@ -22,9 +22,9 @@
   ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/davidyaha/graphql-redis-subscriptions/issues"
+    "url": "https://github.com/jcoreio/graphql-redis-subscriptions/issues"
   },
-  "homepage": "https://github.com/davidyaha/graphql-redis-subscriptions",
+  "homepage": "https://github.com/jcoreio/graphql-redis-subscriptions",
   "scripts": {
     "compile": "tsc",
     "pretest": "npm run compile",
