@@ -55,9 +55,11 @@ export class RedisPubSub implements PubSubEngine {
         );
       }
     }
+    // handle messages received via psubscribe and subscribe
+    this.redisSubscriber.on('pmessageBuffer', this.onMessage.bind(this));
 
     // TODO support for pattern based message
-    this.redisSubscriber.on('messageBuffer', this.onMessage.bind(this));
+    this.redisSubscriber.on('messageBuffer', this.onMessage.bind(this, undefined));
 
     this.subscriptionMap = {};
     this.subsRefsMap = {};
@@ -71,7 +73,7 @@ export class RedisPubSub implements PubSubEngine {
   public subscribe(
     trigger: string,
     onMessage: Function,
-    options: {binary?: boolean, repoName?: string} = {},
+    options: {binary?: boolean, repoName?: string, pattern?: boolean} = {},
   ): Promise<number> {
     const triggerName: string = this.triggerTransform(trigger, options);
     const id = this.currentSubscriptionId++;
@@ -84,8 +86,9 @@ export class RedisPubSub implements PubSubEngine {
       return Promise.resolve(id);
     } else {
       return new Promise<number>((resolve, reject) => {
-        // TODO Support for pattern subs
-        this.redisSubscriber.subscribe(triggerName, err => {
+        const subscribeFn = !!options['pattern'] ? this.redisSubscriber.psubscribe : this.redisSubscriber.subscribe;
+
+        subscribeFn.call(this.redisSubscriber, triggerName, err => {
           if (err) {
             reject(err);
           } else {
@@ -107,7 +110,10 @@ export class RedisPubSub implements PubSubEngine {
     if (!refs) throw new Error(`There is no subscription of id "${subId}"`);
 
     if (refs.length === 1) {
+      // unsubscribe from specific channel and pattern match
       this.redisSubscriber.unsubscribe(triggerName);
+      this.redisSubscriber.punsubscribe(triggerName);
+
       delete this.subsRefsMap[triggerName];
     } else {
       const index = refs.indexOf(subId);
@@ -120,8 +126,8 @@ export class RedisPubSub implements PubSubEngine {
     delete this.subscriptionMap[subId];
   }
 
-  public asyncIterator<T>(triggers: string | string[]): AsyncIterator<T> {
-    return new PubSubAsyncIterator<T>(this, triggers);
+  public asyncIterator<T>(triggers: string | string[], options?: Object): AsyncIterator<T> {
+    return new PubSubAsyncIterator<T>(this, triggers, options);
   }
 
   public getSubscriber(): RedisClient {
@@ -137,11 +143,11 @@ export class RedisPubSub implements PubSubEngine {
     this.redisSubscriber.quit();
   }
 
-  private onMessage(channel: string, message: Buffer) {
+  private onMessage(pattern: string, channel: string, message: Buffer) {
     let parsedMessage: any = message;
     let messageParseAttempted = false;
 
-    for (const subId of this.subsRefsMap[channel] || []) {
+    for (const subId of this.subsRefsMap[pattern || channel] || []) {
       const {onMessage, binary} = this.subscriptionMap[subId];
       if (!binary && !messageParseAttempted) {
         messageParseAttempted = true;
