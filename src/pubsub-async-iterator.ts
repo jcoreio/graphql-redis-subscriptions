@@ -60,6 +60,15 @@ export class PubSubAsyncIterator<T> implements AsyncIterator<T> {
     return this;
   }
 
+  public subscribeAll(): Promise<Array<number>> {
+    if (!this.subscriptionIds) {
+      this.subscriptionIds = Promise.all(this.eventsArray.map(
+          eventName => this.pubsub.subscribe(eventName, this.pushValue.bind(this), this.options),
+      ));
+    }
+    return this.subscriptionIds;
+  }
+
   private pullQueue: Function[];
   private pushQueue: any[];
   private eventsArray: string[];
@@ -95,15 +104,6 @@ export class PubSubAsyncIterator<T> implements AsyncIterator<T> {
       this.pullQueue.length = 0;
       this.pushQueue.length = 0;
     }
-  }
-
-  private subscribeAll() {
-    if (!this.subscriptionIds) {
-      this.subscriptionIds = Promise.all(this.eventsArray.map(
-        eventName => this.pubsub.subscribe(eventName, this.pushValue.bind(this), this.options),
-      ));
-    }
-    return this.subscriptionIds
   }
 
   private unsubscribeAll(subscriptionIds: number[]) {
